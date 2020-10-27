@@ -31,8 +31,8 @@ sub connect_oracle {
 	$log_path //= "my_sql_info.log";
 	$err_path //= "my_sql_error.log";
 
-	$DB::file_logger = Log::Mini->new( file => $log_path, level => 'info' );
-	$DB::error_logger = Log::Mini->new( file => $err_path );
+	$DB::file_logger = Log::Mini->new( file => $log_path, level => 'info', synced => 1);
+	$DB::error_logger = Log::Mini->new( file => $err_path , synced => 1);
 	if ( $DB::dbh != undef ){		# 单例模式
 		$DB::err_msg = "数据库已经连接过";
 		return 1;
@@ -71,11 +71,10 @@ sub execute {
 	my $sth;
 	my $rtn = eval {
 		$sth = $DB::dbh->prepare( $sql_str ); 	# sql预处理
-		$sth->execute() or die $DBI::errstr;
+		$sth->execute() or $DB::err_msg = "$sql_str  ".$DBI::errstr;
 		$sth->finish;
 	};
 	if (! defined $rtn){
-		$DB::err_msg = "$sql_str  ".$DBI::errstr;
 		$DB::error_logger->error($DB::err_msg);
 		return -1;
 	} else {
@@ -105,12 +104,17 @@ sub get_json {
 	my $sth;
 	my $data = "";
 	my $rtn = eval{
-		$sth = $DB::dbh->prepare( $sql_str ); 	# sql预处理
-		$sth->execute();
-		$data = $sth->fetchall_hashref( "ROWNUM" );	# hash键 该值排除hash冲突
+					$sth = $DB::dbh->prepare( $sql_str ); 	# sql预处理
+					$sth->execute()  or $DB::err_msg = $DBI::errstr;
+					my $rt = eval {
+						$data = $sth->fetchall_hashref("ROWNUM"); # hash键 该值排除hash冲突
+					};
+					if ( ! defined $rt ) {
+						$DB::err_msg = "查询列不包括ROWNUM, HASH返回失败";
+						$DB::error_logger->error($DB::err_msg);
+				}
 	};
 	if(! defined $rtn){
-		$DB::err_msg= $DBI::errstr;
 		$DB::error_logger->error($DB::err_msg);
 		return 0;
 	};
@@ -146,10 +150,9 @@ sub get_list {
 	my $sth = "";
 	my $rtn = eval{
 		$sth = $DB::dbh->prepare( $sql_str ); 	# sql预处理
-		$sth->execute();
+		$sth->execute() or $DB::err_msg= $DBI::errstr;
 	};
 	if ( ! defined $rtn){
-		$DB::err_msg = $DBI::errstr;
 		$DB::error_logger->error($DB::err_msg);
 		return 0;
 	} else {
