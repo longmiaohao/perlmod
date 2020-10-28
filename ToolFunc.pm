@@ -8,7 +8,7 @@ use JSON;
 use Redis;
 use Data::Dumper;
 
-our @EXPORT = qw/privilege config_hash get_session set_session/;
+our @EXPORT = qw/privilege config_hash set_session_cover_pre set_session_no_cover_pre/;
 
 our $syslog = Log::Mini->new( file => 'syserror.log', synced=>1 );;
 
@@ -57,6 +57,7 @@ sub config_hash {
     走默认端口, 127.0.0.1
     传入sessionid
     返回hash,没有数据查到数据返回0,
+    不是json格式进入redis就返回标量
 =cut
 
 sub get_session {
@@ -72,18 +73,26 @@ sub get_session {
     if ( ! $redis->exists( $sessionid ) ){
         return 0;
     }else {
-        return %{ from_json( $redis->get( $sessionid ) ) };
+        my %res;
+        $rtn = eval {
+            %res = %{from_json($redis->get($sessionid))};
+        };
+        if ( ! defined $rtn ){              #    不是json就返回标量
+            return $redis->get($sessionid);
+        }
+        return %res;
     }
 }
 
-=head1 set_session
+=head1 set_session_no_cover_pre
 
     设置session
+    如果有键在 就不存入，如果没有就存入，不会延后缓存生命
     入参：用户名，session值，过期时间 默认一小时
     出参：成功1， 失败0
 =cut
 
-sub set_session {
+sub set_session_no_cover_pre {
     my ( $sessionid, $session_value, $time ) = @_;
     my $redis;
     $time //= 3600;
@@ -99,9 +108,32 @@ sub set_session {
         $redis->expire( $sessionid, $time );
     }
     return 1;
-
 }
 
+
+=head1 set_session_cover_pre
+
+    设置session
+    存在则刷新，不存在则新建
+    入参：用户名，session值，过期时间 默认一小时
+    出参：成功1， 失败0
+=cut
+
+sub set_session_cover_pre {
+    my ( $sessionid, $session_value, $time ) = @_;
+    my $redis;
+    $time //= 3600;
+    my $rtn = eval {
+        $redis = Redis->new();
+    };
+    if ( ! defined $rtn ) {
+        $ToolFunc::syslog->error( "redis连接失败! redis没有启动?" );
+        return 0;
+    }
+    $redis->set( $sessionid=>$session_value );
+    $redis->expire( $sessionid, $time );
+    return 1;
+}
 =cut
 
 =head1 lh
