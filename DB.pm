@@ -5,6 +5,7 @@ use DBI;
 use JSON;
 use Log::Mini;
 use utf8;
+use Data::Dumper;
 
 BEGIN {
 	binmode(STDIN, ":utf8");
@@ -17,26 +18,34 @@ BEGIN {
 =head1 连接Oracle数据库
 
 	传入参数:
-	数据库IP， 端口号， 数据库， 用户名， 密码， 日志文件路径 默认/var/log/my_sql_info.log，错误日志文件路径 默认/var/log/my_sql_error.log
+	数据库IP， 端口号， 数据库， 用户名， 密码
+	hash参数引用 \%hash
+	{
+		"log_msg": "自定义,将显示在每条日志的末尾",
+		"info_log_path"： "自定义正常日志文件位置",
+		"err_log_path": "自定义错误日志文件位置"
+	}
 =cut
 
 our $err_msg = undef;
 our $dbh = undef;
 our $file_logger = undef;	# 日志记录
 our $error_logger = undef;	# 错误日志记录
-
+our $log_msg = "";			# 自定义信息
 sub connect_oracle {
 
-	my ( $host, $port, $database, $username, $password , $log_path, $err_path ) = @_;
-	$log_path //= "my_sql_info.log";
-	$err_path //= "my_sql_error.log";
+	my ( $host, $port, $database, $username, $password , $refconfig ) = @_;
+	$DB::log_msg{ log_msg } = $$refconfig{ log_msg };
+	$$refconfig{ info_log_path } //= "my_sql_info.log";
+	$$refconfig{ err_log_path } //= "my_sql_error.log";
+	$DB::file_logger = Log::Mini->new( file => $$refconfig{ info_log_path }, level => 'info', synced => 1);
+	$DB::error_logger = Log::Mini->new( file => $$refconfig{ err_log_path } , synced => 1);
 
-	$DB::file_logger = Log::Mini->new( file => $log_path, level => 'info', synced => 1);
-	$DB::error_logger = Log::Mini->new( file => $err_path , synced => 1);
 	if ( $DB::dbh != undef ){		# 单例模式
 		$DB::err_msg = "数据库已经连接过";
 		return 1;
 	}
+
 	my $driver = 'Oracle';           # 接口类型 默认为 localhost
 	# 驱动程序对象的句柄
 	my $dsn = "DBI:$driver:$host:$port/$database";
@@ -45,7 +54,7 @@ sub connect_oracle {
 	$dbh->{LongReadLen} = 5242880;
 	$dbh->{LongTruncOk} = 0;
 	if ( !ref($dbh) =~ m/DBI::db/ ) {
-		$DB::error_logger->error($DB::err_msg);
+		$DB::error_logger->error("$DB::err_msg $log_msg");
 		return 0;
 	}
 	return 1;
@@ -75,10 +84,10 @@ sub execute {
 		$sth->finish;
 	};
 	if (! defined $rtn){
-		$DB::error_logger->error($DB::err_msg);
+		$DB::error_logger->error("$DB::err_msg $log_msg");
 		return -1;
 	} else {
-		$DB::file_logger->info($sql_str);
+		$DB::file_logger->info("$sql_str $log_msg");
 		return $sth->rows;
 	}
 }
@@ -111,7 +120,7 @@ sub get_json {
 					};
 					if ( ! defined $rt ) {
 						$DB::err_msg = "查询列不包括ROWNUM, HASH返回失败";
-						$DB::error_logger->error($DB::err_msg);
+						$DB::error_logger->error("$DB::err_msg $log_msg");
 				}
 	};
 	if(! defined $rtn){
@@ -153,12 +162,12 @@ sub get_list {
 		$sth->execute() or $DB::err_msg= $DBI::errstr;
 	};
 	if ( ! defined $rtn){
-		$DB::error_logger->error($DB::err_msg);
+		$DB::error_logger->error("$DB::err_msg $log_msg");
 		return 0;
 	} else {
 		my @data = $sth->fetchall_arrayref();
 		$sth->finish;
-		$DB::file_logger->info($sql_str);
+		$DB::file_logger->info("$sql_str $log_msg");
 		return @data;
 	}
 }
@@ -174,7 +183,7 @@ sub close {
 			return 1;
 		}
 		$DB::err_msg = $DBI::errstr;
-		$DB::error_logger->error($DB::err_msg);
+		$DB::error_logger->error("$DB::err_msg $log_msg");
 		return 0;
 	} else {
 		$DB::err_msg = "数据库未连接\n";
