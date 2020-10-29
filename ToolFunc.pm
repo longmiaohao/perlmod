@@ -27,11 +27,12 @@ BEGIN {
 =cut
 
 sub privilege {
-    my ($sql) = @_;
-    if ( ! ref($DB::dbh) =~ m/DBI::db/i ){     # 数据库是否连接 单例模式
+    my ( $sql ) = @_;
+    if ( ! ref($DB::dbh) =~ m/DBI::db/i ) {     # 数据库是否连接 单例模式
          $ToolFunc::syslog->error("数据库连接失败，无法获取用户权限信息");
         return 0;
-    } else {
+    }
+    else {
         return %{from_json( DB::get_json( $sql ) )->[0]};   # 转hash
     }
 }
@@ -44,7 +45,7 @@ sub privilege {
 
 sub config_hash {
     my ( $config_path ) = @_;
-    if ( ! defined $config_path){
+    if ( ! defined $config_path ) {
         $ToolFunc::syslog->error("config_hash配置函数找不到配置文件路径，无法读取配置文件");
         return undef;
     }
@@ -61,23 +62,24 @@ sub config_hash {
 =cut
 
 sub get_session {
-    my ($sessionid) = @_;
+    my ( $sessionid ) = @_;
     my $redis;
-    my $rtn = eval{
+    my $rtn = eval {
         $redis = Redis->new();
     };
     if ( ! defined $rtn ) {
         $ToolFunc::syslog->error( "redis连接失败! redis没有启动?" );
         return -1;
     }
-    if ( ! $redis->exists( $sessionid ) ){
+    if ( ! $redis->exists( $sessionid ) ) {
         return 0;
-    }else {
+    }
+    else {
         my %res;
         $rtn = eval {
             %res = %{from_json($redis->get($sessionid))};
         };
-        if ( ! defined $rtn ){              #    不是json就返回标量
+        if ( ! defined $rtn ) {              #    不是json就返回标量
             return $redis->get($sessionid);
         }
         return %res;
@@ -103,7 +105,7 @@ sub set_session_no_cover_pre {
         $ToolFunc::syslog->error( "redis连接失败! redis没有启动?" );
         return 0;
     }
-    if (! $redis->exists($sessionid)){              # 不存在则重新设置
+    if ( ! $redis->exists($sessionid) ) {              # 不存在则重新设置
         $redis->set( $sessionid=>$session_value );
         $redis->expire( $sessionid, $time );
     }
@@ -142,3 +144,4 @@ sub set_session_cover_pre {
 =cut
 
 1;
+__END__
