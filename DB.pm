@@ -113,16 +113,21 @@ sub get_json {
 	my $sth;
 	my $data = "";
 	my $rtn = eval{
-					$sth = $DB::dbh->prepare( $sql_str ); 	# sql预处理
-					$sth->execute()  or $DB::err_msg = $DBI::errstr;
+					if ( $sql_str =~ m/\s+ROWNUM\s+/ig ){
+						$sth = $DB::dbh->prepare( $sql_str ); 	# sql预处理, 自动处理ROWNUM
+					}
+					else {
+						$sth = $DB::dbh->prepare("SELECT ROWNUM , t.* from (".$sql_str.") t" );
+					}
+					$sth->execute() or $DB::err_msg = $DBI::errstr;
 					my $rt = eval {
 						$data = $sth->fetchall_hashref("ROWNUM"); # hash键 该值排除hash冲突
 					};
 					if ( ! defined $rt ) {
 						$DB::err_msg = "查询列不包括ROWNUM, HASH返回失败";
 						$DB::error_logger->error("$DB::err_msg $log_msg");
-				}
-	};
+					}
+				};
 	if(! defined $rtn){
 		$DB::error_logger->error($DB::err_msg);
 		return 0;
@@ -170,6 +175,37 @@ sub get_list {
 		$DB::file_logger->info("$sql_str $log_msg");
 		return @data;
 	}
+}
+
+=head1 auth
+
+	认证函数，通过传入预处理sql，和用户名密码进行认证，防止sql注入
+    sql类似
+        'select count(*) from user where username=? and password=?'
+    格式
+    然后带入值传入username和password具体到值即可
+    认证成功返回1 失败返回0
+=cut
+sub auth {
+	my ( $sql, @params) = @_;
+	my $sth = "";
+	my $rtn = eval {
+		$sth = $DB::dbh->prepare( "select count(*) count from (".$sql.") t" );
+		$sth->execute( @params ) or $DB::err_msg = $DBI::errstr;
+	};
+	if (! defined $rtn ) {
+		$error_logger->error("$DB::err_msg");
+		return -1;
+	}
+	else {
+		$file_logger->info($sql."  ".join( ',', @params ) );
+		my @data = $sth->fetchall_arrayref();
+		$sth->finish;
+		if ( @data[0]->[0]->[0] == 1 ) {
+			return 1;
+		}
+	}
+	return 0;
 }
 
 =head1 关闭连接
