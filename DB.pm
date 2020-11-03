@@ -79,7 +79,7 @@ sub execute {
 	}
 	my $sth;
 	my $rtn = eval {
-		$sth = $DB::dbh->prepare( $sql_str ); 	# sql预处理
+		$sth = $DB::dbh->prepare( $sql_str ) or $DB::err_msg = $DBI::errstr; 	# sql预处理
 		$sth->execute() or $DB::err_msg = "$sql_str  ".$DBI::errstr;
 		$sth->finish;
 	};
@@ -117,7 +117,7 @@ sub get_json {
 						$sth = $DB::dbh->prepare( $sql_str ); 	# sql预处理, 自动处理ROWNUM
 					}
 					else {
-						$sth = $DB::dbh->prepare("SELECT ROWNUM , t.* from (".$sql_str.") t" );
+						$sth = $DB::dbh->prepare("SELECT ROWNUM , t.* from (".$sql_str.") t" ) or $DB::err_msg = $DBI::errstr;
 					}
 					$sth->execute() or $DB::err_msg = $DBI::errstr;
 					my $rt = eval {
@@ -163,7 +163,7 @@ sub get_list {
 	my ( $sql_str ) = @_;
 	my $sth = "";
 	my $rtn = eval{
-		$sth = $DB::dbh->prepare( $sql_str ); 	# sql预处理
+		$sth = $DB::dbh->prepare( $sql_str ) or $DB::err_msg = $DBI::errstr; 	# sql预处理
 		$sth->execute() or $DB::err_msg= $DBI::errstr;
 	};
 	if ( ! defined $rtn){
@@ -190,7 +190,7 @@ sub auth {
 	my ( $sql, @params) = @_;
 	my $sth = "";
 	my $rtn = eval {
-		$sth = $DB::dbh->prepare( "select count(*) count from (".$sql.") t" );
+		$sth = $DB::dbh->prepare( "select count(*) count from (".$sql.") t" ) or $DB::err_msg = $DBI::errstr;
 		$sth->execute( @params ) or $DB::err_msg = $DBI::errstr;
 	};
 	if (! defined $rtn ) {
