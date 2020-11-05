@@ -152,9 +152,10 @@ sub get_json {
 
 =head1 获取数组
 
+	获取行数组
 =cut
 
-sub get_list {
+sub get_row_list {
 	if ( ! defined $DB::dbh ){		# 句柄为空 数据库为连接
 		$DB::err_msg = "数据库未连接\n";
 		warn( $DB::err_msg );
@@ -170,13 +171,45 @@ sub get_list {
 		$DB::error_logger->error("$DB::err_msg $log_msg");
 		return 0;
 	} else {
-		my @data = $sth->fetchall_arrayref();
+		my $data = $sth->fetchall_arrayref();
 		$sth->finish;
 		$DB::file_logger->info("$sql_str $log_msg");
-		return @data;
+		return $data;
 	}
 }
 
+
+=head1 获取列数组
+
+	获取列数组
+=cut
+
+sub get_col_list {
+	if ( ! defined $DB::dbh ){		# 句柄为空 数据库为连接
+		$DB::err_msg = "数据库未连接\n";
+		warn( $DB::err_msg );
+		return 0;
+	}
+	my ( $sql_str ) = @_;
+	my $sth = "";
+	my $rtn = eval{
+		$sth = $DB::dbh->prepare( $sql_str ) or $DB::err_msg = $DBI::errstr; 	# sql预处理
+		$sth->execute() or $DB::err_msg= $DBI::errstr;
+	};
+	if ( ! defined $rtn){
+		$DB::error_logger->error("$DB::err_msg $log_msg");
+		return 0;
+	} else {
+		my $data = $sth->fetchall_arrayref();
+		$sth->finish;
+		$DB::file_logger->info("$sql_str $log_msg");
+		my @result;
+		foreach my $value ( @$data ) {
+			push( @result, $value->[0]);
+		}
+		return \@result;
+	}
+}
 =head1 auth
 
 	认证函数，通过传入预处理sql，和用户名密码进行认证，防止sql注入
