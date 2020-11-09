@@ -150,6 +150,68 @@ sub get_json {
 	}
 }
 
+=head1 api_get_json
+
+	防SQL注入版get_json
+	第一个参数：预处理SQL
+	第二个参数：参数
+=cut
+sub api_get_json {
+	if ( ! defined $DB::dbh ){		# 句柄为空 数据库为连接
+		$DB::err_msg = "数据库未连接, 执行SQL操作失败\n";
+		warn( $DB::err_msg );
+		return 0;
+	}
+	my ( $sql_str, $params ) = @_;
+	if ( $sql_str =~ m/\s*update\s*|\s*delete\s*|\s*insert\s*/ig ){
+		$DB::err_msg = "get_json函数只能传入查询类语句";
+		return 0;
+	}
+	my $sth;
+	my $data = "";
+	my $rtn = eval{
+					if ( $sql_str =~ m/\s+ROWNUM\s+/ig ){
+						$sth = $DB::dbh->prepare( $sql_str ); 	# sql预处理, 自动处理ROWNUM
+					}
+					else {
+						$sth = $DB::dbh->prepare("SELECT ROWNUM , t.* from (".$sql_str.") t" ) or $DB::err_msg = $DBI::errstr;
+					}
+					$sth->execute( split( ' ', $params ) ) or $DB::err_msg = $DBI::errstr;
+					my $rt = eval {
+						$data = $sth->fetchall_hashref("ROWNUM"); # hash键 该值排除hash冲突
+					};
+					if ( ! defined $rt ) {
+						$DB::err_msg = "查询列不包括ROWNUM, HASH返回失败";
+						$DB::error_logger->error("$DB::err_msg $log_msg");
+					}
+				};
+	if(! defined $rtn){
+		$DB::error_logger->error($DB::err_msg."  $params");
+		return 0;
+	};
+	$DB::file_logger->info($sql_str." $params");
+	if ( $sth->rows ) {	# 有数据返回Json格式数据[{},{}]
+		my $json = '[';		# 构造json字符串
+		foreach my $key ( sort keys %{ $data } ) {
+			$json .= to_json( %{ $data }{ $key }, { allow_nonref=>1 } ).',';
+		}
+		$sth->finish();
+		$json =~ s/,$//;
+		$json .= ']';
+		$json =~ s/null/""/g;
+		return $json;
+	}
+	else {	# 没有查到数据返回空数组
+		$sth->finish;
+		return "[]";
+	}
+}
+
+
+
+
+=cut
+
 =head1 获取数组
 
 	获取行数组
@@ -256,7 +318,6 @@ sub close {
 		return 0;
 	} else {
 		$DB::err_msg = "数据库未连接\n";
-		warn( $DB::err_msg );
 		return 0;
 	}
 }
