@@ -1,20 +1,26 @@
 package DB;
-
 use strict;
 use DBI;
 use JSON;
 use Log::Mini;
 use utf8;
-use Data::Dumper;
 
 BEGIN {
 	binmode(STDIN, ":utf8");
 	binmode(STDOUT, ":utf8");
 	# 解决中文乱码问题
 	$ENV{NLS_LANG} = "SIMPLIFIED CHINESE_CHINA.AL32UTF8";
+	$ENV{SYBASE}= "/usr/local/freetds";
+
+
 	our @EXPORT = qw/connect_oracle execute get_json get_list close/;
 }
 
+our $err_msg = undef;
+our $dbh = undef;
+our $file_logger = undef;	# 日志记录
+our $error_logger = undef;	# 错误日志记录
+our $log_msg = "";			# 自定义信息
 =head1 连接Oracle数据库
 
 	传入参数:
@@ -27,11 +33,6 @@ BEGIN {
 	}
 =cut
 
-our $err_msg = undef;
-our $dbh = undef;
-our $file_logger = undef;	# 日志记录
-our $error_logger = undef;	# 错误日志记录
-our $log_msg = "";			# 自定义信息
 sub connect_oracle {
 
 	my ( $host, $port, $database, $username, $password , $refconfig ) = @_;
@@ -42,13 +43,13 @@ sub connect_oracle {
 	$DB::error_logger = Log::Mini->new( file => $$refconfig{ err_log_path } , synced => 1);
 
 	if ( $DB::dbh != undef ){		# 单例模式
-		$DB::err_msg = "数据库已经连接过";
 		return 1;
 	}
 
 	my $driver = 'Oracle';           # 接口类型 默认为 localhost
 	# 驱动程序对象的句柄
 	my $dsn = "DBI:$driver:$host:$port/$database";
+
    	# 连接数据库
 	$dbh = DBI->connect( $dsn, $username, $password ) or $err_msg="$DBI::errstr";
 	$dbh->{LongReadLen} = 5242880;
@@ -60,6 +61,40 @@ sub connect_oracle {
 	return 1;
 }
 
+=head1 connect_sqlserver
+
+	连接sqlserver数据库
+=cut
+
+sub connect_sqlserver {
+
+	my ( $host, $port, $database, $username, $password , $refconfig ) = @_;
+	$DB::log_msg{ log_msg } = $$refconfig{ log_msg };
+	$$refconfig{ info_log_path } //= "my_sql_info.log";
+	$$refconfig{ err_log_path } //= "my_sql_error.log";
+	$DB::file_logger = Log::Mini->new( file => $$refconfig{ info_log_path }, level => 'info', synced => 1);
+	$DB::error_logger = Log::Mini->new( file => $$refconfig{ err_log_path } , synced => 1);
+
+	if ( $DB::dbh != undef ) {		# 单例模式
+		return 1;
+	}
+
+	# 驱动程序对象的句柄
+	my $dsn = "Driver={ODBC Driver 17 for SQL Server};server=$host;port=$port;database=$database;charset=gbk";
+	# my $dsn = "database=$database;charset=utf-8";
+   	# 连接数据库,{ RaiseError => 1, AutoCommit => 1}
+	$dbh = DBI->connect( "DBI:ODBC:$dsn", $username, $password ) or $err_msg="$DBI::errstr";
+	# $dbh->{LongReadLen} = 5242880;
+	# $dbh->{LongTruncOk} = 0;
+	if ( !ref($dbh) =~ m/DBI::db/ ) {
+		$DB::error_logger->error("$DB::err_msg $log_msg");
+		return 0;
+	}
+	return 1;
+}
+
+=cut
+
 =head1 执行操作类语句
 
 	传入参数
@@ -68,13 +103,13 @@ sub connect_oracle {
 =cut
 sub execute {
 	if ( ! defined $DB::dbh){		# 句柄为空 数据库为连接
-		$DB::err_msg = "数据库未连接\n";
+		$DB::err_msg = "DB not connected";
 		warn($DB::err_msg);
 		return 0;
 	}
 	my ( $sql_str ) = @_;
 	if( $sql_str =~ /\s*select\s*/gi ) {
-		$DB::err_msg = "execute 函数只能传入非查询类语句";
+		$DB::err_msg = "execute only for not queries";
 		return 0;
 	}
 	my $sth;
@@ -101,13 +136,13 @@ sub execute {
 =cut
 sub get_json {
 	if ( ! defined $DB::dbh ){		# 句柄为空 数据库为连接
-		$DB::err_msg = "数据库未连接, 执行SQL操作失败\n";
+		$DB::err_msg = "DB not connected, excute SQL failed";
 		warn( $DB::err_msg );
 		return 0;
 	}
 	my ( $sql_str ) = @_;
 	if ( $sql_str =~ m/\s*update\s*|\s*delete\s*|\s*insert\s*/ig ){
-		$DB::err_msg = "get_json函数只能传入查询类语句";
+		$DB::err_msg = "get_json func only queries";
 		return 0;
 	}
 	my $sth;
@@ -150,21 +185,78 @@ sub get_json {
 	}
 }
 
-=head1 api_get_json
+=head1 mssql_api_get_json
 
-	防SQL注入版get_json
+	防SQL注入版sqlserver get_json
 	第一个参数：预处理SQL
 	第二个参数：参数
 =cut
-sub api_get_json {
+sub mssql_api_get_json {
 	if ( ! defined $DB::dbh ){		# 句柄为空 数据库为连接
-		$DB::err_msg = "数据库未连接, 执行SQL操作失败\n";
+		$DB::err_msg = "DB not connected, excute SQL failed";
 		warn( $DB::err_msg );
 		return 0;
 	}
 	my ( $sql_str, $params ) = @_;
 	if ( $sql_str =~ m/\s*update\s*|\s*delete\s*|\s*insert\s*/ig ){
-		$DB::err_msg = "get_json函数只能传入查询类语句";
+		$DB::err_msg = "get_json func only queries";
+		return 0;
+	}
+	my $sth;
+	my $data = "";
+	my $rtn = eval{
+					if ( $sql_str =~ m/\s+ROWNUM\s+/ig ){
+						$sth = $DB::dbh->prepare( $sql_str ); 	# sql预处理, 自动处理ROWNUM
+					}
+					else {
+						$sth = $DB::dbh->prepare("SELECT NEWID() as ROWNUM , t.* from (".$sql_str.") t" ) or $DB::err_msg = $DBI::errstr;
+					}
+					$sth->execute( split( ' ', $params ) ) or $DB::err_msg = $DBI::errstr;
+					my $rt = eval {
+						$data = $sth->fetchall_hashref("ROWNUM"); # hash键 该值排除hash冲突
+					};
+					if ( ! defined $rt ) {
+						$DB::err_msg = "查询列不包括ROWNUM, HASH返回失败";
+						$DB::error_logger->error("$DB::err_msg $sql_str $log_msg ");
+					}
+				};
+	if(! defined $rtn ){
+		$DB::error_logger->error($DB::err_msg."  $params");
+		return 0;
+	};
+	$DB::file_logger->info($sql_str." $params");
+	if ( $sth->rows ) {	# 有数据返回Json格式数据[{},{}]
+		my $json = '[';		# 构造json字符串
+		foreach my $key ( sort keys %{ $data } ) {
+			$json .= to_json( %{ $data }{ $key }, { allow_nonref=>1 } ).',';
+		}
+		$sth->finish();
+		$json =~ s/,$//;
+		$json .= ']';
+		$json =~ s/null/""/g;
+		return $json;
+	}
+	else {	# 没有查到数据返回空数组
+		$sth->finish;
+		return "[]";
+	}
+}
+
+=head1 oracle_api_get_json
+
+	防SQL注入版oracle get_json
+	第一个参数：预处理SQL
+	第二个参数：参数
+=cut
+sub oralce_api_get_json {
+	if ( ! defined $DB::dbh ){		# 句柄为空 数据库为连接
+		$DB::err_msg = "DB not connected, excute SQL failed";
+		warn( $DB::err_msg );
+		return 0;
+	}
+	my ( $sql_str, $params ) = @_;
+	if ( $sql_str =~ m/\s*update\s*|\s*delete\s*|\s*insert\s*/ig ){
+		$DB::err_msg = "get_json func only queries";
 		return 0;
 	}
 	my $sth;
@@ -182,10 +274,10 @@ sub api_get_json {
 					};
 					if ( ! defined $rt ) {
 						$DB::err_msg = "查询列不包括ROWNUM, HASH返回失败";
-						$DB::error_logger->error("$DB::err_msg $log_msg");
+						$DB::error_logger->error("$DB::err_msg $sql_str $log_msg ");
 					}
 				};
-	if(! defined $rtn){
+	if(! defined $rtn ){
 		$DB::error_logger->error($DB::err_msg."  $params");
 		return 0;
 	};
@@ -208,8 +300,6 @@ sub api_get_json {
 }
 
 
-
-
 =cut
 
 =head1 获取数组
@@ -219,7 +309,7 @@ sub api_get_json {
 
 sub get_row_list {
 	if ( ! defined $DB::dbh ){		# 句柄为空 数据库为连接
-		$DB::err_msg = "数据库未连接\n";
+		$DB::err_msg = "DB not connected";
 		warn( $DB::err_msg );
 		return 0;
 	}
@@ -248,7 +338,7 @@ sub get_row_list {
 
 sub get_col_list {
 	if ( ! defined $DB::dbh ){		# 句柄为空 数据库为连接
-		$DB::err_msg = "数据库未连接\n";
+		$DB::err_msg = "DB not connected";
 		warn( $DB::err_msg );
 		return 0;
 	}
@@ -317,7 +407,7 @@ sub close {
 		$DB::error_logger->error("$DB::err_msg $log_msg");
 		return 0;
 	} else {
-		$DB::err_msg = "数据库未连接\n";
+		$DB::err_msg = "DB not connected";
 		return 0;
 	}
 }
