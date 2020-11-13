@@ -248,7 +248,7 @@ sub mssql_api_get_json {
 	第一个参数：预处理SQL
 	第二个参数：参数
 =cut
-sub oralce_api_get_json {
+sub oracle_api_get_json {
 	if ( ! defined $DB::dbh ){		# 句柄为空 数据库为连接
 		$DB::err_msg = "DB not connected, excute SQL failed";
 		warn( $DB::err_msg );
