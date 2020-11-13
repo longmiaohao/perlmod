@@ -10,7 +10,7 @@ use Data::Dumper;
 
 our @EXPORT = qw/privilege config_hash set_session_cover_pre set_session_no_cover_pre/;
 
-our $syslog = Log::Mini->new( file => 'syserror.log', synced=>1 );;
+our $syslog = Log::Mini->new( file => 'syserror.log', synced=>1 );
 
 BEGIN {
 	binmode(STDIN, ":utf8");
@@ -27,15 +27,25 @@ BEGIN {
 =cut
 
 sub privilege {
-    my ( $sql ) = @_;
-    if ( ! ref($DB::dbh) =~ m/DBI::db/i ) {     # 数据库是否连接 单例模式
-         $ToolFunc::syslog->error("数据库连接失败，无法获取用户权限信息");
-        return 0;
+    my ( $path, $sessionid ) = @_;
+    $path ||= '';
+    my $qxarr = from_json(ToolFunc::get_session( $sessionid ));
+    my $sql = "select LJDM from usr_wfw.T_FX_LJ where LJ = '/$path'";
+    my $path_dm = DB::get_col_list( $sql )->[0];
+    if (! defined $path_dm) {
+        $syslog->error("路径/$path 没有写入路径表(T_FX_LJ)进行管理，无法对该路径进行正常放行，进行始终拦截策略");
+        return -1;
     }
-    else {
-        return %{from_json( DB::get_json( $sql ) )->[0]};   # 转hash
+    foreach my $ljid ( @$qxarr ) {
+        if ( $ljid eq $path_dm ) {
+            return 1;
+        }
     }
+    return 0;
 }
+
+
+=cut
 
 =head1 config_hash
 
@@ -71,7 +81,7 @@ sub get_session {
         $ToolFunc::syslog->error( "redis连接失败! redis没有启动?" );
         return -1;
     }
-    if ( ! $redis->exists( $sessionid ) ) {
+    if ( ! $redis->exists( $sessionid ) ) {     # 不存在
         return 0;
     }
     else {
@@ -105,9 +115,15 @@ sub set_session_no_cover_pre {
         $ToolFunc::syslog->error( "redis连接失败! redis没有启动?" );
         return 0;
     }
-    if ( ! $redis->exists($sessionid) ) {              # 不存在则重新设置
-        $redis->set( $sessionid=>$session_value );
-        $redis->expire( $sessionid, $time );
+    $rtn = eval {
+        if ( ! $redis->exists($sessionid) ) {              # 不存在则重新设置
+            $redis->set( $sessionid=>$session_value );
+            $redis->expire( $sessionid, $time );
+        }
+    };
+    if ( ! defined $rtn ) {
+        $ToolFunc::syslog->error( "redis服务异常，写入失败，请检查。" );
+        return 0;
     }
     return 1;
 }
@@ -132,8 +148,14 @@ sub set_session_cover_pre {
         $ToolFunc::syslog->error( "redis连接失败! redis没有启动?" );
         return 0;
     }
-    $redis->set( $sessionid=>$session_value );
-    $redis->expire( $sessionid, $time );
+    $rtn = eval {
+        $redis->set( $sessionid=>$session_value );
+        $redis->expire( $sessionid, $time );
+    };
+    if ( ! defined $rtn ) {
+        $ToolFunc::syslog->error( "redis服务异常，写入失败，请检查。" );
+        return 0;
+    }
     return 1;
 }
 =cut
