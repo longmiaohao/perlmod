@@ -47,13 +47,16 @@ sub connect_oracle {
 	my $driver = 'Oracle';           # 接口类型 默认为 localhost
 	# 驱动程序对象的句柄
 	my $dsn = "DBI:$driver:$host:$port/$database";
-
    	# 连接数据库
-	$dbh = DBI->connect( $dsn, $username, $password ) or $err_msg="$DBI::errstr";
-	$dbh->{LongReadLen} = 5242880;
-	$dbh->{LongTruncOk} = 0;
-	if ( !ref($dbh) =~ m/DBI::db/ ) {
-		$DB::error_logger->error("$DB::err_msg $log_msg");
+	eval {
+		$dbh = DBI->connect( $dsn, $username, $password ) or die $err_msg="$DBI::errstr";
+		$dbh->{LongReadLen} = 5242880;
+		$dbh->{LongTruncOk} = 0;
+	};
+	if ( $@ ) {
+		eval {
+			$DB::error_logger->error("$DB::err_msg $log_msg");
+		};
 		return 0;
 	}
 	return 1;
