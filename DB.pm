@@ -4,15 +4,13 @@ use DBI;
 use JSON;
 use Log::Mini;
 use utf8;
+use Data::Dumper;
 
 BEGIN {
 	binmode(STDIN, ":utf8");
 	binmode(STDOUT, ":utf8");
 	# 解决中文乱码问题
 	$ENV{NLS_LANG} = "SIMPLIFIED CHINESE_CHINA.AL32UTF8";
-	$ENV{SYBASE}= "/usr/local/freetds";
-
-
 	our @EXPORT = qw/connect_oracle execute get_json get_list close/;
 }
 
@@ -37,8 +35,8 @@ sub connect_oracle {
 
 	my ( $host, $port, $database, $username, $password , $refconfig ) = @_;
 	$DB::log_msg{ log_msg } = $$refconfig{ log_msg };
-	$$refconfig{ info_log_path } //= "my_sql_info.log";
-	$$refconfig{ err_log_path } //= "my_sql_error.log";
+	$$refconfig{ info_log_path } //= "/tmp/www/my_sql_info.log";
+	$$refconfig{ err_log_path } //= "/tmp/www/my_sql_error.log";
 	$DB::file_logger = Log::Mini->new( file => $$refconfig{ info_log_path }, level => 'info', synced => 1);
 	$DB::error_logger = Log::Mini->new( file => $$refconfig{ err_log_path } , synced => 1);
 
@@ -70,8 +68,8 @@ sub connect_sqlserver {
 
 	my ( $host, $port, $database, $username, $password , $refconfig ) = @_;
 	$DB::log_msg{ log_msg } = $$refconfig{ log_msg };
-	$$refconfig{ info_log_path } //= "my_sql_info.log";
-	$$refconfig{ err_log_path } //= "my_sql_error.log";
+	$$refconfig{ info_log_path } //= "/tmp/www/my_sql_info.log";
+	$$refconfig{ err_log_path } //= "/tmp/www/my_sql_error.log";
 	$DB::file_logger = Log::Mini->new( file => $$refconfig{ info_log_path }, level => 'info', synced => 1);
 	$DB::error_logger = Log::Mini->new( file => $$refconfig{ err_log_path } , synced => 1);
 
@@ -148,7 +146,7 @@ sub get_json {
 	my $sth;
 	my $data = "";
 	my $rtn = eval{
-					if ( $sql_str =~ m/\s+ROWNUM\s+/ig ){
+					if ( $sql_str =~ m/\s+ROWNUM/ig ){
 						$sth = $DB::dbh->prepare( $sql_str ); 	# sql预处理, 自动处理ROWNUM
 					}
 					else {
@@ -205,8 +203,8 @@ sub mssql_api_get_json {
 	my $sth;
 	my $data = "";
 	my $rtn = eval{
-					if ( $sql_str =~ m/\s+ROWNUM\s+/ig ){
-						$sth = $DB::dbh->prepare( $sql_str ); 	# sql预处理, 自动处理ROWNUM
+					if ( $sql_str =~ m/\s+ROWNUM/ig ){
+						$sth = $DB::dbh->prepare( $sql_str ) or $DB::err_msg = $DBI::errstr; 	# sql预处理, 自动处理ROWNUM
 					}
 					else {
 						$sth = $DB::dbh->prepare("SELECT NEWID() as ROWNUM , t.* from (".$sql_str.") t" ) or $DB::err_msg = $DBI::errstr;
@@ -217,14 +215,14 @@ sub mssql_api_get_json {
 					};
 					if ( ! defined $rt ) {
 						$DB::err_msg = "查询列不包括ROWNUM, HASH返回失败";
-						$DB::error_logger->error("$DB::err_msg $sql_str $log_msg ");
+						$DB::error_logger->error(" $DB::err_msg $sql_str $log_msg ");
 					}
 				};
 	if(! defined $rtn ){
 		$DB::error_logger->error($DB::err_msg."  $params");
 		return 0;
 	};
-	$DB::file_logger->info($sql_str." $params");
+	# $DB::file_logger->info($sql_str." $params");
 	if ( $sth->rows ) {	# 有数据返回Json格式数据[{},{}]
 		my $json = '[';		# 构造json字符串
 		foreach my $key ( sort keys %{ $data } ) {
@@ -262,7 +260,7 @@ sub oracle_api_get_json {
 	my $sth;
 	my $data = "";
 	my $rtn = eval{
-					if ( $sql_str =~ m/\s+ROWNUM\s+/ig ){
+					if ( $sql_str =~ m/\s+ROWNUM/ig ){
 						$sth = $DB::dbh->prepare( $sql_str ); 	# sql预处理, 自动处理ROWNUM
 					}
 					else {
