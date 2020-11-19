@@ -122,7 +122,7 @@ sub connect_sqlserver {
 	}
 
 	# 驱动程序对象的句柄
-	my $dsn = "Driver={ODBC Driver 17 for SQL Server};server=$host;port=$port;database=$database;charset=gbk";
+	my $dsn = "Driver={ODBC Driver 17 for SQL Server};server=$host;port=$port;database=$database;ClientCharset=UTF-8;ServerCharset=CP1252;";
 	# my $dsn = "database=$database;charset=utf-8";
    	# 连接数据库,{ RaiseError => 1, AutoCommit => 1} ;
 	$dbh = DBI->connect( "DBI:ODBC:$dsn", $username, $password, { RaiseError => 1, AutoCommit => 1}) or $err_msg="$DBI::errstr";
@@ -420,7 +420,7 @@ sub mssql_api_get_json {
 	if ( $sth->rows ) {	# 有数据返回Json格式数据[{},{}]
 		my $json = '[';		# 构造json字符串
 		foreach my $key ( sort keys %{ $data } ) {
-			$json .= to_json( %{ $data }{ $key }, { allow_nonref=>1 } ).',';
+			$json .= Encode::decode_utf8 to_json( %{ $data }{ $key }, { allow_nonref=>1 } ).',';
 		}
 		$sth->finish();
 		$json =~ s/,$//;
