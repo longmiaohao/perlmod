@@ -4,6 +4,7 @@ use DBI;
 use JSON;
 use Log::Mini;
 use utf8;
+use Encode;
 use Data::Dumper;
 
 BEGIN {
@@ -284,7 +285,7 @@ sub get_json {
 	}
 	if ( $sth->rows ) {	# 有数据返回Json格式数据[{},{}]
 		my $json = '[';		# 构造json字符串
-		foreach my $key ( sort keys %{ $data } ) {
+		foreach my $key ( sort { scalar $a <=>  scalar $b } keys % { $data } ) {
 			$json .= to_json( %{ $data }{ $key }, { allow_nonref=>1 } ).',';
 		}
 		$sth->finish();
@@ -399,7 +400,7 @@ sub mssql_api_get_json {
 					}
 					$sth->execute( split( '&&@@', $params ) ) or $DB::err_msg = $DBI::errstr;
 					my $rt = eval {
-						$data = $sth->fetchall_hashref("ROWNUM"); # hash键 该值排除hash冲突
+						$data = $sth->fetchall_hashref( "ROWNUM" ); # hash键 该值排除hash冲突
 					};
 					if ( ! defined $rt ) {
 						$DB::err_msg = "查询列不包括ROWNUM, HASH返回失败";
@@ -419,8 +420,8 @@ sub mssql_api_get_json {
 	}
 	if ( $sth->rows ) {	# 有数据返回Json格式数据[{},{}]
 		my $json = '[';		# 构造json字符串
-		foreach my $key ( sort keys %{ $data } ) {
-			$json .= Encode::decode_utf8 to_json( %{ $data }{ $key }, { allow_nonref=>1 } ).',';
+		foreach my $key ( sort { scalar $a <=>  scalar $b } keys % { $data } ) {
+			$json .= Encode::decode_utf8(to_json( $data->{ $key }, { allow_nonref=>1 } )).',';
 		}
 		$sth->finish();
 		$json =~ s/,$//;
@@ -482,7 +483,7 @@ sub oracle_api_get_json {
 	}
 	if ( $sth->rows ) {	# 有数据返回Json格式数据[{},{}]
 		my $json = '[';		# 构造json字符串
-		foreach my $key ( sort keys %{ $data } ) {
+		foreach my $key ( sort { scalar $a <=>  scalar $b } keys % { $data } ) {
 			$json .= to_json( %{ $data }{ $key }, { allow_nonref=>1 } ).',';
 		}
 		$sth->finish();
