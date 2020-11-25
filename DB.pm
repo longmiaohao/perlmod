@@ -38,7 +38,7 @@ sub auth {
 		$sth = $DB::dbh->prepare( "select count(*) count from (".$sql.") t" ) or $DB::err_msg = $DBI::errstr;
 		$sth->execute( @params ) or $DB::err_msg = $DBI::errstr;
 	};
-	if (! defined $rtn ) {
+	if (! defined $rtn || $DB::err_msg ne undef) {
 		if ( $DB::log_flag eq 1 ) {
 			$error_logger->error("$DB::err_msg");
 		}
@@ -184,7 +184,7 @@ sub execute {
 		$sth->execute() or $DB::err_msg = "$sql_str  ".$DBI::errstr;
 		$sth->finish;
 	};
-	if (! defined $rtn){
+	if (! defined $rtn || $DB::err_msg ne undef ){
 		if( $DB::log_flag eq 1 ) {
 			$DB::error_logger->error("$DB::err_msg $log_msg");
 		}
@@ -223,7 +223,7 @@ sub api_execute {
 		$sth->execute(split('&&@@', $params)) or $DB::err_msg = "$sql_str  ".$DBI::errstr;
 		$sth->finish;
 	};
-	if (! defined $rtn){
+	if (! defined $rtn || $DB::err_msg ne undef){
 		if( $DB::log_flag eq 1 ) {
 			$DB::error_logger->error("$DB::err_msg $log_msg");
 		}
@@ -274,7 +274,7 @@ sub get_json {
 						}
 					}
 				};
-	if(! defined $rtn){
+	if(! defined $rtn || $DB::err_msg ne undef){
 		if( $DB::log_flag eq 1 ) {
 			$DB::error_logger->error($DB::err_msg);
 		}
@@ -319,7 +319,7 @@ sub get_row_list {
 		$sth = $DB::dbh->prepare( $sql_str ) or $DB::err_msg = $DBI::errstr; 	# sql预处理
 		$sth->execute() or $DB::err_msg= $DBI::errstr;
 	};
-	if ( ! defined $rtn){
+	if ( ! defined $rtn || $DB::err_msg ne undef){
 		if ( $DB::log_flag eq 1 ) {
 			$DB::error_logger->error("$DB::err_msg $log_msg");
 		}
@@ -352,7 +352,7 @@ sub get_col_list {
 		$sth = $DB::dbh->prepare( $sql_str ) or $DB::err_msg = $DBI::errstr; 	# sql预处理
 		$sth->execute() or $DB::err_msg= $DBI::errstr;
 	};
-	if ( ! defined $rtn){
+	if ( ! defined $rtn || $DB::err_msg ne undef){
 		if ( $DB::log_flag eq 1 ) {
 			$DB::error_logger->error("$DB::err_msg $log_msg");
 		}
@@ -409,7 +409,7 @@ sub mssql_api_get_json {
 						}
 					}
 				};
-	if(! defined $rtn ){
+	if(! defined $rtn || $DB::err_msg ne undef){
 		if ( $DB::log_flag eq 1 ) {
 			$DB::error_logger->error($DB::err_msg . "  $params");
 		}
@@ -472,7 +472,7 @@ sub oracle_api_get_json {
 						}
 					}
 				};
-	if(! defined $rtn ){
+	if(! defined $rtn || $DB::err_msg ne undef){
 		if ( $DB::log_flag eq 1 ) {
 			$DB::error_logger->error($DB::err_msg . "  $params");
 		}
