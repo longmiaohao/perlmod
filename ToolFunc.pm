@@ -6,11 +6,11 @@ use Config::Any::JSON;
 use utf8;
 use JSON;
 use Redis;
-use Data::Dumper;
+use Log::Mini;
 
 our @EXPORT = qw/privilege config_hash set_session_cover_pre set_session_no_cover_pre/;
 
-our $syslog = Log::Mini->new( file => 'syserror.log', synced=>1 );
+our $syslog = Log::Mini->new( file => '/tmp/www/syserror.log', synced=>1 );
 
 BEGIN {
 	binmode(STDIN, ":utf8");
@@ -31,9 +31,16 @@ sub privilege {
     $path ||= '';
     my $qxarr = from_json(ToolFunc::get_session( $sessionid ));
     my $sql = "select LJDM from usr_wfw.T_FX_LJ where LJ = '/$path'";
-    my $path_dm = DB::get_col_list( $sql )->[0];
+    my $path_dm;
+    my $rtn = eval {
+            $path_dm = DB::get_col_list( $sql )->[0];
+    };
+    if ( ! defined $rtn ) {
+        $ToolFunc::syslog->error("路径表被锁，无法执行查询操作");
+        return -2;
+    }
     if (! defined $path_dm) {
-        $syslog->error("路径/$path 没有写入路径表(T_FX_LJ)进行管理，无法对该路径进行正常放行，进行始终拦截策略");
+        $ToolFunc::syslog->error("路径/$path 没有写入路径表(T_FX_LJ)进行管理，无法对该路径进行正常放行，进行始终拦截策略");
         return -1;
     }
     foreach my $ljid ( @$qxarr ) {
