@@ -14,7 +14,7 @@ BEGIN {
 	$ENV{NLS_LANG} = "SIMPLIFIED CHINESE_CHINA.AL32UTF8";
 	our @EXPORT = qw/connect_oracle execute get_json get_list close/;
 }
-our $log_flag = 1;			# 日志开关 默认不开启
+our $log_flag = 0;			# 日志开关 默认不开启
 our $err_msg = undef;
 our $dbh = undef;
 our $file_logger = undef;	# 日志记录
