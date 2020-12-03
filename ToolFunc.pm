@@ -12,7 +12,7 @@ use Spreadsheet::ParseExcel::FmtUnicode;
 use Spreadsheet::XLSX;
 use POSIX qw(strftime ceil);
 use Log::Mini;
-
+use Encode;
 our @EXPORT = qw/privilege config_hash set_session_cover_pre set_session_no_cover_pre/;
 
 our $syslog = Log::Mini->new( file => '/tmp/www/syserror.log', synced=>1 );
@@ -188,7 +188,7 @@ sub upload_func {
     my $fileDate = strftime "%Y-%m-%d", localtime;  # 当天目录
     my $filename = $upload->filename;
 
-    # 创建存储目录
+    # 创建存储目录 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  apache 不支持 $ENV{PWD}
     my $path = $ENV{ PWD }."/root/static/uploads/fx_".$fileDate;
     if ( ! -e $path ) {
         mkdir( $path ) or die "无法创建 $path 目录, $!";
@@ -310,6 +310,137 @@ sub upload_func {
 
     return %arr;
 }
+
+
+sub upload_back_table {
+    my ( $c,  @fields ) = @_;
+    my %arr;
+    my $upload = $c->req->upload('file');
+    my $fileDate = strftime "%Y-%m-%d", localtime;  # 当天目录
+    my $filename = $upload->filename;
+
+    # 创建存储目录 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  apache 不支持 $ENV{PWD}
+    my $path = $ENV{ PWD }."/root/static/uploads/fx_".$fileDate;
+    if ( ! -e $path ) {
+        mkdir( $path ) or die "无法创建 $path 目录, $!";
+    }
+
+    # 获取后缀名
+    my @suffix = split( '\.', $filename );
+    my $fileNameCount = @suffix;
+    my $fileNameSuffix = $suffix[$fileNameCount-1];
+
+    $arr{'code'} = 0;
+
+    # 校验文件类型
+    if ( $fileNameSuffix ne 'xls' and $fileNameSuffix ne 'xlsx' ) {
+        $arr{'msg'} = "不允许的文件类型!";
+        return %arr;
+    }
+
+    my $target = $path.'/'.$suffix[0].'-'.time().'.'.$fileNameSuffix; # 定义文件上传目录并重命名
+    # 文件上传
+    unless ( $upload->link_to($target) || $upload->copy_to($target) ) {
+        $arr{'msg'} = "$filename 文件写入失败 !";
+        $arr{'path'} = $target;
+        return %arr;
+    }
+
+    my @list; # 存储为列表
+    my $index = 0; # 数组索引
+    my $fieldsCount = 0; # 字段长度
+
+    if ( $fileNameSuffix eq 'xls' ){
+
+        my $parser   = Spreadsheet::ParseExcel->new();
+        my $workbook = $parser->parse($target);
+
+        if ( !defined $workbook ) {
+            $arr{'msg'} = $parser->error();
+            $c->res->body(to_json(\%arr, {allow_nonref=>1,utf8=>0}));
+            return 0;
+        }
+
+        foreach my $worksheet ( $workbook->worksheets() ) {
+
+            my ( $row_min, $row_max ) = $worksheet->row_range();
+            my ( $col_min, $col_max ) = $worksheet->col_range();
+
+            $row_min = 0; # 从第2行开始获取数据
+            $fieldsCount = $col_max;
+            foreach my $row ( $row_min .. $row_max ) {
+
+                foreach my $col ( $col_min .. $col_max ) {
+                    my $cell = $worksheet->get_cell( $row, $col );
+                    next unless $cell;
+                    my $tmp = $cell->value();
+                    $tmp =~ s/^\s+|\s+$//g;  # 去除左右空格
+                    $list[$index]->{$col} = $tmp;
+                    $c->log->info($tmp);
+                }
+                $index++;
+            }
+        }
+    }
+    elsif ( $fileNameSuffix eq 'xlsx' ) {
+        # XLSX 格式文档
+        my $excel = Spreadsheet::XLSX -> new( $target );
+        foreach my $sheet (@{$excel -> {Worksheet}}) {
+
+            # 读取 sheet 名称
+            # printf("Sheet: %s\n", $sheet->{Name});
+
+            $sheet -> {MaxRow} ||= $sheet -> {MinRow};
+
+            my $minRow = 0; # $sheet -> {MinRow}  从第2行获取数据 第一行为字段名
+
+            foreach my $row ($minRow .. $sheet -> {MaxRow}) {
+
+                $sheet -> {MaxCol} ||= $sheet -> {MinCol};
+                $fieldsCount = $sheet -> {MaxCol};
+                foreach my $col ($sheet -> {MinCol} ..  $sheet -> {MaxCol}) {
+
+                    my $cell = $sheet -> {Cells} [$row] [$col];
+
+                    if ( $cell ) {
+                        my $tmp = $cell -> {Val};
+                        $tmp =~ s/^\s+|\s+$//g;  # 去除左右空格
+                        $list[$index]->{$col} = $tmp;
+
+                    }
+                }
+                $index++;
+            }
+        }
+    }
+
+
+    my $listCount = @list;  # 数据长度
+    my $html = '<figure class="table"><table><tbody>';
+
+    foreach my $val ( 0 .. ($listCount-1) ) {
+
+        my $info = $list[$val];
+        $html .= '<tr>';
+        foreach my $i (0 .. ($fieldsCount) ) {
+            # 处理输入值
+            my $data = $info->{$i};
+            $data =~s/\s+//g; # 去除空格
+            $html .= "<td>".decode_utf8($data)."</td>";
+        }
+        $html .= '</tr>';
+    }
+    $html .= '</tbody></table></figure>';
+    $arr{'code'} = 1;
+    $arr{'msg'} = 'success';
+    $arr{'path'} = $target;
+    $arr{'data'} = $html;
+    return %arr;
+}
+
+
+
+
 
 =cut
 
